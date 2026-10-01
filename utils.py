@@ -1,36 +1,27 @@
 import os
-import shutil
+from pathlib import Path
 
 
-def safe_remove(
-    path
-):
+def safe_remove(path):
 
     try:
 
-        if not os.path.exists(
-            path
-        ):
-            return
+        path = Path(path)
 
-        if os.path.isdir(
-            path
-        ):
+        if path.exists():
 
-            shutil.rmtree(
-                path,
-                ignore_errors=True
-            )
+            if path.is_file():
 
-        else:
+                path.unlink()
 
-            os.remove(
-                path
-            )
+            elif path.is_dir():
 
-    except Exception as error:
+                import shutil
+
+                shutil.rmtree(path)
+
+    except Exception as e:
 
         print(
-            "Cleanup error:",
-            error
+            f"[Cleanup Error] {e}"
         )
