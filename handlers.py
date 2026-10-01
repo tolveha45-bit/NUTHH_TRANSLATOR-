@@ -1,40 +1,50 @@
 import asyncio
+import uuid
 from pathlib import Path
 
 from telegram import Update
+from telegram.ext import ContextTypes
 
-from telegram.ext import (
-    ContextTypes
+from config import (
+    TEMP_DIR,
+    MAX_TEXT_LENGTH
+)
+
+from database import (
+    add_or_update_user,
+    get_user,
+    update_voice_settings,
+    save_voice_history,
+    save_translation
 )
 
 from keyboards import (
     main_menu,
-    video_menu,
+    voice_menu,
+    gender_menu,
+    speed_menu,
+    pitch_menu,
     back_menu
 )
 
-from database import (
-    add_user,
-    create_video_job,
-    update_video_job
+from translator import (
+    chinese_to_khmer,
+    khmer_to_chinese,
+    detect_and_translate
 )
 
-from license import (
-    check_license
-)
+from whisper_stt import transcribe_audio
 
-from config import (
-    TEMP_DIR
-)
+from voice_tts import generate_voice_sync
 
-from video import (
-    translate_long_video
-)
+from license import check_license
+
+from utils import safe_remove
 
 
-# ============================================================
+# =========================================================
 # START
-# ============================================================
+# =========================================================
 
 async def start_handler(
     update: Update,
@@ -43,22 +53,25 @@ async def start_handler(
 
     user = update.effective_user
 
-    add_user(user)
+    add_or_update_user(user)
 
     await update.message.reply_text(
-        "👋 Welcome to NUTHH Translator\n\n"
-        "Professional Chinese ↔ Khmer Translator\n\n"
-        "🎬 Long Video Translation\n"
-        "📝 SRT Subtitle\n"
-        "🎞️ Burn Subtitle\n\n"
-        "Choose a feature:",
-        reply_markup=main_menu()
+        "🤖 *NUTHH Translator*\n\n"
+        "🌐 Chinese ↔ Khmer\n"
+        "🎤 Voice AI\n"
+        "📝 Speech-to-Text\n"
+        "🔊 Text-to-Speech\n"
+        "👨 Male / 👩 Female / 🧑 Neutral\n"
+        "🎬 Video Translation\n\n"
+        "Choose a feature below:",
+        reply_markup=main_menu(),
+        parse_mode="Markdown"
     )
 
 
-# ============================================================
+# =========================================================
 # CALLBACK
-# ============================================================
+# =========================================================
 
 async def callback_handler(
     update: Update,
@@ -69,350 +82,447 @@ async def callback_handler(
 
     await query.answer()
 
+    user_id = query.from_user.id
+
     data = query.data
 
-    # --------------------------------------------------------
+    # -----------------------------------------------------
     # MAIN
-    # --------------------------------------------------------
+    # -----------------------------------------------------
 
-    if data == "main_menu":
+    if data == "back_main":
 
         await query.edit_message_text(
-            "🏠 MAIN MENU\n\n"
-            "Choose a feature:",
-            reply_markup=main_menu()
+            "🏠 *NUTHH Translator Main Menu*",
+            reply_markup=main_menu(),
+            parse_mode="Markdown"
         )
 
         return
 
-    # --------------------------------------------------------
-    # VIDEO MENU
-    # --------------------------------------------------------
+    # -----------------------------------------------------
+    # VOICE AI
+    # -----------------------------------------------------
 
-    if data == "video_translate":
-
-        await query.edit_message_text(
-            "🎬 VIDEO TRANSLATION\n\n"
-            "Choose translation mode:",
-            reply_markup=video_menu()
-        )
-
-        return
-
-    # --------------------------------------------------------
-    # CHINESE → KHMER
-    # --------------------------------------------------------
-
-    if data == "video_zh_km":
-
-        context.user_data[
-            "video_mode"
-        ] = "zh_km"
-
-        context.user_data[
-            "video_burn"
-        ] = True
+    if data == "voice_ai":
 
         await query.edit_message_text(
-            "🇨🇳 → 🇰🇭\n\n"
-            "🎬 Send your video.\n\n"
+            "🎤 *VOICE AI*\n\n"
+            "Send me a voice message.\n\n"
             "The bot will:\n"
-            "1. Split into chunks\n"
-            "2. Speech-to-text\n"
-            "3. Translate to Khmer\n"
-            "4. Generate SRT\n"
-            "5. Burn subtitle",
-            reply_markup=back_menu()
+            "1️⃣ Convert speech → text\n"
+            "2️⃣ Detect language\n"
+            "3️⃣ Translate\n"
+            "4️⃣ Generate AI voice\n"
+            "5️⃣ Send translated audio\n\n"
+            "Current voice settings are saved automatically.",
+            reply_markup=voice_menu(),
+            parse_mode="Markdown"
         )
 
         return
 
-    # --------------------------------------------------------
-    # KHMER → CHINESE
-    # --------------------------------------------------------
+    # -----------------------------------------------------
+    # VOICE STUDIO
+    # -----------------------------------------------------
 
-    if data == "video_km_zh":
+    if data == "voice_studio":
 
-        context.user_data[
-            "video_mode"
-        ] = "km_zh"
+        user = get_user(user_id)
 
-        context.user_data[
-            "video_burn"
-        ] = True
+        gender = (
+            user["voice_gender"]
+            if user
+            else "female"
+        )
+
+        voice_name = (
+            user["voice_name"]
+            if user
+            else ""
+        )
+
+        rate = (
+            user["voice_rate"]
+            if user
+            else "+0%"
+        )
+
+        pitch = (
+            user["voice_pitch"]
+            if user
+            else "+0Hz"
+        )
+
+        text = (
+            "🔊 *VOICE STUDIO*\n\n"
+            f"👤 Gender: `{gender}`\n"
+            f"🎙️ Voice: `{voice_name or 'Auto'}`\n"
+            f"⚡ Speed: `{rate}`\n"
+            f"🎚️ Pitch: `{pitch}`\n\n"
+            "Choose a setting:"
+        )
 
         await query.edit_message_text(
-            "🇰🇭 → 🇨🇳\n\n"
-            "🎬 Send your video.",
-            reply_markup=back_menu()
+            text,
+            reply_markup=voice_menu(),
+            parse_mode="Markdown"
         )
 
         return
 
-    # --------------------------------------------------------
-    # AUTO
-    # --------------------------------------------------------
+    # -----------------------------------------------------
+    # GENDER
+    # -----------------------------------------------------
 
-    if data == "video_auto":
+    if data == "voice_gender_male":
 
-        context.user_data[
-            "video_mode"
-        ] = "auto"
-
-        context.user_data[
-            "video_burn"
-        ] = True
+        update_voice_settings(
+            user_id,
+            gender="male"
+        )
 
         await query.edit_message_text(
-            "🤖 AUTO DETECT\n\n"
-            "🎬 Send your video.\n\n"
-            "The bot will detect the "
-            "spoken language automatically.",
-            reply_markup=back_menu()
+            "👨 *Male Voice Selected*\n\n"
+            "All future Voice AI responses will use "
+            "the male voice profile.",
+            reply_markup=voice_menu(),
+            parse_mode="Markdown"
         )
 
         return
 
-    # --------------------------------------------------------
-    # SUBTITLE ONLY
-    # --------------------------------------------------------
+    if data == "voice_gender_female":
 
-    if data == "video_subtitle":
-
-        context.user_data[
-            "video_mode"
-        ] = "auto"
-
-        context.user_data[
-            "video_burn"
-        ] = False
+        update_voice_settings(
+            user_id,
+            gender="female"
+        )
 
         await query.edit_message_text(
-            "📝 SUBTITLE ONLY\n\n"
-            "🎬 Send your video.\n\n"
-            "The bot will return "
-            "translated.srt.",
-            reply_markup=back_menu()
+            "👩 *Female Voice Selected*\n\n"
+            "All future Voice AI responses will use "
+            "the female voice profile.",
+            reply_markup=voice_menu(),
+            parse_mode="Markdown"
         )
 
         return
 
-    # --------------------------------------------------------
-    # BURN SUBTITLE
-    # --------------------------------------------------------
+    if data == "voice_gender_neutral":
 
-    if data == "video_burn":
-
-        context.user_data[
-            "video_mode"
-        ] = "auto"
-
-        context.user_data[
-            "video_burn"
-        ] = True
+        update_voice_settings(
+            user_id,
+            gender="neutral"
+        )
 
         await query.edit_message_text(
-            "🎞️ BURN SUBTITLE\n\n"
-            "🎬 Send your video.\n\n"
-            "The translated subtitle "
-            "will be burned into the video.",
-            reply_markup=back_menu()
+            "🧑 *Neutral Voice Selected*",
+            reply_markup=voice_menu(),
+            parse_mode="Markdown"
         )
 
         return
 
-    # --------------------------------------------------------
+    # -----------------------------------------------------
+    # SPEED
+    # -----------------------------------------------------
+
+    if data == "voice_speed":
+
+        await query.edit_message_text(
+            "⚡ *VOICE SPEED*\n\n"
+            "Choose speech speed:",
+            reply_markup=speed_menu(),
+            parse_mode="Markdown"
+        )
+
+        return
+
+    speed_map = {
+
+        "speed_75": "-25%",
+        "speed_100": "+0%",
+        "speed_125": "+25%",
+        "speed_150": "+50%",
+        "speed_200": "+100%"
+    }
+
+    if data in speed_map:
+
+        update_voice_settings(
+            user_id,
+            rate=speed_map[data]
+        )
+
+        await query.edit_message_text(
+            f"⚡ Speed set to `{speed_map[data]}`",
+            reply_markup=voice_menu(),
+            parse_mode="Markdown"
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # PITCH
+    # -----------------------------------------------------
+
+    if data == "voice_pitch":
+
+        await query.edit_message_text(
+            "🎚️ *VOICE PITCH*\n\n"
+            "Choose pitch:",
+            reply_markup=pitch_menu(),
+            parse_mode="Markdown"
+        )
+
+        return
+
+    pitch_map = {
+
+        "pitch_low": "-20Hz",
+        "pitch_normal": "+0Hz",
+        "pitch_high": "+20Hz"
+    }
+
+    if data in pitch_map:
+
+        update_voice_settings(
+            user_id,
+            pitch=pitch_map[data]
+        )
+
+        await query.edit_message_text(
+            f"🎚️ Pitch set to `{pitch_map[data]}`",
+            reply_markup=voice_menu(),
+            parse_mode="Markdown"
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # VOICE TRANSLATION MODE
+    # -----------------------------------------------------
+
+    if data == "voice_zh_km":
+
+        context.user_data["voice_mode"] = "zh_km"
+
+        await query.edit_message_text(
+            "🇨🇳 → 🇰🇭 *Chinese → Khmer*\n\n"
+            "Now send a Chinese voice message.",
+            reply_markup=back_menu(),
+            parse_mode="Markdown"
+        )
+
+        return
+
+    if data == "voice_km_zh":
+
+        context.user_data["voice_mode"] = "km_zh"
+
+        await query.edit_message_text(
+            "🇰🇭 → 🇨🇳 *Khmer → Chinese*\n\n"
+            "Now send a Khmer voice message.",
+            reply_markup=back_menu(),
+            parse_mode="Markdown"
+        )
+
+        return
+
+    if data == "voice_auto":
+
+        context.user_data["voice_mode"] = "auto"
+
+        await query.edit_message_text(
+            "🤖 *Auto Detect Mode*\n\n"
+            "Send any supported voice message.",
+            reply_markup=back_menu(),
+            parse_mode="Markdown"
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # HISTORY
+    # -----------------------------------------------------
+
+    if data == "voice_history":
+
+        await query.edit_message_text(
+            "🎧 *Voice History*\n\n"
+            "Voice history database is enabled.\n\n"
+            "Previous generated files are stored "
+            "as metadata for your account.",
+            reply_markup=back_menu(),
+            parse_mode="Markdown"
+        )
+
+        return
+
+    # -----------------------------------------------------
     # TEXT
-    # --------------------------------------------------------
+    # -----------------------------------------------------
 
     if data == "text_translate":
 
-        context.user_data[
-            "text_mode"
-        ] = True
+        context.user_data["text_mode"] = True
 
         await query.edit_message_text(
-            "🌐 TEXT TRANSLATE\n\n"
+            "🌐 *TEXT TRANSLATION*\n\n"
             "Send Chinese or Khmer text.",
-            reply_markup=back_menu()
+            reply_markup=back_menu(),
+            parse_mode="Markdown"
         )
 
         return
 
-    # --------------------------------------------------------
+    # -----------------------------------------------------
     # HELP
-    # --------------------------------------------------------
+    # -----------------------------------------------------
 
     if data == "help":
 
         await query.edit_message_text(
-            "❓ HELP\n\n"
+            "❓ *NUTHH Translator Help*\n\n"
             "🌐 Text Translation\n"
-            "🎤 Voice Translation\n"
-            "🖼️ OCR Translation\n"
-            "🎬 Long Video Translation\n\n"
-            "Video supports:\n"
-            "• Chinese → Khmer\n"
-            "• Khmer → Chinese\n"
-            "• Auto Detect\n"
-            "• 1–5 hour workflow\n"
-            "• Chunk processing\n"
-            "• Retry\n"
-            "• Resume\n"
-            "• SRT\n"
-            "• Burn subtitles",
+            "🎤 Voice AI\n"
+            "🖼️ OCR\n"
+            "🎬 Video Translation\n"
+            "📩 Forward Translation\n"
+            "🔊 Voice Studio\n\n"
+            "Voice AI supports:\n"
+            "👨 Male\n"
+            "👩 Female\n"
+            "🧑 Neutral\n"
+            "⚡ Speed\n"
+            "🎚️ Pitch",
+            reply_markup=back_menu(),
+            parse_mode="Markdown"
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # OTHER FEATURES
+    # -----------------------------------------------------
+
+    if data in (
+        "ocr",
+        "forward_translate",
+        "video_translate",
+        "history",
+        "favorites",
+        "settings"
+    ):
+
+        await query.edit_message_text(
+            "🚧 This module is ready to be connected "
+            "to the full NUTHH Translator system.",
             reply_markup=back_menu()
         )
 
         return
 
 
-# ============================================================
-# TEXT
-# ============================================================
+# =========================================================
+# TEXT HANDLER
+# =========================================================
 
 async def text_handler(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    user = update.effective_user
+    if not update.message:
 
-    add_user(user)
-
-    if not context.user_data.get(
-        "text_mode"
-    ):
         return
 
-    text = (
-        update.message.text or ""
-    ).strip()
+    text = update.message.text.strip()
 
     if not text:
+
         return
 
-    await update.message.reply_text(
-        "⏳ Translating..."
-    )
+    if len(text) > MAX_TEXT_LENGTH:
+
+        await update.message.reply_text(
+            f"⚠️ Text is too long.\n"
+            f"Maximum: {MAX_TEXT_LENGTH} characters."
+        )
+
+        return
+
+    user = update.effective_user
+
+    add_or_update_user(user)
 
     try:
 
-        from langdetect import detect
-
-        from translator import (
-            translate_chinese_to_khmer,
-            translate_khmer_to_chinese
+        translated, source, target = (
+            detect_and_translate(text)
         )
 
-        detected = detect(
-            text
+        save_translation(
+            user.id,
+            text,
+            translated,
+            source,
+            target
         )
-
-        if detected.startswith(
-            "zh"
-        ):
-
-            result = (
-                translate_chinese_to_khmer(
-                    text
-                )
-            )
-
-            label = "🇨🇳 → 🇰🇭"
-
-        else:
-
-            result = (
-                translate_khmer_to_chinese(
-                    text
-                )
-            )
-
-            label = "🇰🇭 → 🇨🇳"
 
         await update.message.reply_text(
-            f"{label}\n\n"
-            f"{result}",
-            reply_markup=main_menu()
+            f"🌐 *Translation*\n\n"
+            f"Original:\n"
+            f"`{text}`\n\n"
+            f"Translation:\n"
+            f"*{translated}*",
+            parse_mode="Markdown"
         )
 
-    except Exception as error:
+    except Exception as e:
+
+        print(
+            f"[Text Translation Error] {e}"
+        )
 
         await update.message.reply_text(
-            "❌ Translation failed.\n\n"
-            f"{error}",
-            reply_markup=main_menu()
+            "❌ Translation failed.\n"
+            "Please try again."
         )
 
-    finally:
 
-        context.user_data[
-            "text_mode"
-        ] = False
+# =========================================================
+# VOICE HANDLER
+# =========================================================
 
-
-# ============================================================
-# VIDEO
-# ============================================================
-
-async def video_handler(
+async def voice_handler(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
 
+    message = update.message
+
     user = update.effective_user
 
-    add_user(user)
+    if not check_license(user.id):
 
-    if not check_license(
-        user.id
-    ):
-
-        await update.message.reply_text(
-            "🔐 License inactive."
+        await message.reply_text(
+            "🔐 Your Voice AI license is not active."
         )
 
         return
 
-    video = update.message.video
-
-    if not video:
-
-        await update.message.reply_text(
-            "❌ Please send a video."
-        )
-
-        return
-
-    mode = context.user_data.get(
-        "video_mode",
-        "auto"
+    status = await message.reply_text(
+        "🎤 Receiving voice...\n"
+        "⏳ Please wait..."
     )
 
-    burn = context.user_data.get(
-        "video_burn",
-        True
-    )
-
-    # --------------------------------------------------------
-    # DATABASE JOB
-    # --------------------------------------------------------
-
-    job_id = create_video_job(
-        user.id,
-        video.file_name or "video.mp4",
-        mode,
-        "khmer"
-    )
-
-    # --------------------------------------------------------
-    # WORK DIRECTORY
-    # --------------------------------------------------------
+    work_id = uuid.uuid4().hex
 
     work_dir = (
         TEMP_DIR /
-        f"job_{job_id}"
+        f"voice_{user.id}_{work_id}"
     )
 
     work_dir.mkdir(
@@ -420,198 +530,289 @@ async def video_handler(
         exist_ok=True
     )
 
-    video_path = (
+    input_audio = (
         work_dir /
-        "input.mp4"
+        "input.ogg"
     )
 
-    status = await update.message.reply_text(
-        "🎬 VIDEO TRANSLATION\n\n"
-        "⏳ Downloading video..."
+    output_audio = (
+        work_dir /
+        "translated.mp3"
     )
 
     try:
 
-        # ----------------------------------------------------
+        # -------------------------------------------------
         # DOWNLOAD
-        # ----------------------------------------------------
+        # -------------------------------------------------
 
-        telegram_file = (
-            await context.bot.get_file(
-                video.file_id
-            )
-        )
+        telegram_file = await message.voice.get_file()
 
         await telegram_file.download_to_drive(
-            custom_path=str(
-                video_path
-            )
+            custom_path=str(input_audio)
         )
 
         await status.edit_text(
-            "🎬 VIDEO TRANSLATION\n\n"
-            "✅ Download complete\n"
-            "⏳ Preparing chunks..."
+            "🎤 Voice received.\n"
+            "🧠 Converting speech to text..."
         )
 
-        # ----------------------------------------------------
-        # PROGRESS
-        # ----------------------------------------------------
+        # -------------------------------------------------
+        # STT
+        # -------------------------------------------------
 
-        last_progress = {
-            "value": -1
-        }
-
-        loop = asyncio.get_running_loop()
-
-        async def update_progress(
-            percent,
-            current,
-            total,
-            message
-        ):
-
-            if (
-                percent ==
-                last_progress["value"]
-            ):
-                return
-
-            last_progress[
-                "value"
-            ] = percent
-
-            try:
-
-                await status.edit_text(
-                    "🎬 VIDEO TRANSLATION\n\n"
-                    f"📊 Progress: "
-                    f"{percent}%\n"
-                    f"📦 Chunk: "
-                    f"{current}/{total}\n"
-                    f"⚙️ {message}"
-                )
-
-            except Exception:
-
-                pass
-
-        def progress_callback(
-            percent,
-            current,
-            total,
-            message
-        ):
-
-            asyncio.run_coroutine_threadsafe(
-                update_progress(
-                    percent,
-                    current,
-                    total,
-                    message
-                ),
-                loop
-            )
-
-        # ----------------------------------------------------
-        # PROCESS
-        # ----------------------------------------------------
-
-        result = await asyncio.to_thread(
-            translate_long_video,
-            str(video_path),
-            str(work_dir),
-            mode,
-            None,
-            burn,
-            progress_callback
+        detected_language, segments = await asyncio.to_thread(
+            transcribe_audio,
+            str(input_audio),
+            None
         )
 
-        update_video_job(
-            job_id,
-            "completed"
-        )
-
-        # ----------------------------------------------------
-        # SRT
-        # ----------------------------------------------------
-
-        srt_path = result[
-            "srt"
-        ]
-
-        with open(
-            srt_path,
-            "rb"
-        ) as file:
-
-            await update.message.reply_document(
-                document=file,
-                caption=(
-                    "📝 SRT READY\n\n"
-                    f"📦 Chunks: "
-                    f"{result['total_chunks']}\n"
-                    "🌐 Chinese ↔ Khmer"
-                )
-            )
-
-        # ----------------------------------------------------
-        # VIDEO
-        # ----------------------------------------------------
-
-        output_video = result.get(
-            "output_video"
-        )
-
-        if output_video:
+        if not segments:
 
             await status.edit_text(
-                "🎬 VIDEO TRANSLATION\n\n"
-                "✅ Processing complete\n"
-                "📤 Uploading translated video..."
+                "❌ Could not recognize speech."
             )
 
-            with open(
-                output_video,
-                "rb"
-            ) as file:
+            return
 
-                await update.message.reply_video(
-                    video=file,
-                    caption=(
-                        "🎬 VIDEO TRANSLATION COMPLETE\n\n"
-                        "🌐 Chinese ↔ Khmer\n"
-                        "📝 SRT generated\n"
-                        "🎞️ Subtitle burned\n"
-                        f"📦 Chunks: "
-                        f"{result['total_chunks']}"
-                    ),
-                    supports_streaming=True
+        original_text = " ".join(
+            segment["text"]
+            for segment in segments
+        ).strip()
+
+        if not original_text:
+
+            await status.edit_text(
+                "❌ No speech detected."
+            )
+
+            return
+
+        # -------------------------------------------------
+        # DETERMINE LANGUAGE
+        # -------------------------------------------------
+
+        mode = context.user_data.get(
+            "voice_mode",
+            "auto"
+        )
+
+        if mode == "zh_km":
+
+            source_language = "zh"
+            target_language = "km"
+
+        elif mode == "km_zh":
+
+            source_language = "km"
+            target_language = "zh"
+
+        else:
+
+            source_language = (
+                detected_language
+                or "unknown"
+            )
+
+            if source_language.startswith("zh"):
+
+                source_language = "zh"
+                target_language = "km"
+
+            elif source_language == "km":
+
+                source_language = "km"
+                target_language = "zh"
+
+            else:
+
+                # Try language detection from text
+                from langdetect import detect
+
+                detected = detect(
+                    original_text
                 )
 
+                if detected.startswith("zh"):
+
+                    source_language = "zh"
+                    target_language = "km"
+
+                elif detected == "km":
+
+                    source_language = "km"
+                    target_language = "zh"
+
+                else:
+
+                    await status.edit_text(
+                        "⚠️ Currently this Voice AI "
+                        "workflow supports Chinese and Khmer."
+                    )
+
+                    return
+
+        # -------------------------------------------------
+        # TRANSLATE
+        # -------------------------------------------------
+
         await status.edit_text(
-            "✅ VIDEO TRANSLATION COMPLETE\n\n"
-            "📝 Subtitle created\n"
-            "🎞️ Subtitle burned\n"
-            "💾 Processing finished."
+            "🌐 Translating..."
         )
 
-    except Exception as error:
+        if (
+            source_language == "zh"
+            and target_language == "km"
+        ):
 
-        update_video_job(
-            job_id,
-            "failed"
+            translated_text = await asyncio.to_thread(
+                chinese_to_khmer,
+                original_text
+            )
+
+        elif (
+            source_language == "km"
+            and target_language == "zh"
+        ):
+
+            translated_text = await asyncio.to_thread(
+                khmer_to_chinese,
+                original_text
+            )
+
+        else:
+
+            raise ValueError(
+                "Unsupported translation direction."
+            )
+
+        # -------------------------------------------------
+        # USER VOICE SETTINGS
+        # -------------------------------------------------
+
+        user_settings = get_user(user.id)
+
+        gender = (
+            user_settings["voice_gender"]
+            if user_settings
+            else "female"
         )
+
+        rate = (
+            user_settings["voice_rate"]
+            if user_settings
+            else "+0%"
+        )
+
+        pitch = (
+            user_settings["voice_pitch"]
+            if user_settings
+            else "+0Hz"
+        )
+
+        volume = (
+            user_settings["voice_volume"]
+            if user_settings
+            else "+0%"
+        )
+
+        # -------------------------------------------------
+        # TTS
+        # -------------------------------------------------
+
+        await status.edit_text(
+            "🔊 Generating AI voice..."
+        )
+
+        await asyncio.to_thread(
+            generate_voice_sync,
+            translated_text,
+            target_language,
+            gender,
+            output_audio,
+            rate,
+            pitch,
+            volume
+        )
+
+        # -------------------------------------------------
+        # SAVE HISTORY
+        # -------------------------------------------------
+
+        save_voice_history(
+            user.id,
+            original_text,
+            translated_text,
+            source_language,
+            target_language,
+            user_settings["voice_name"]
+            if user_settings
+            else "",
+            gender,
+            str(output_audio)
+        )
+
+        # -------------------------------------------------
+        # SEND RESULT
+        # -------------------------------------------------
+
+        await status.edit_text(
+            "✅ Voice translation complete!"
+        )
+
+        await message.reply_text(
+            "📝 *Original*\n"
+            f"{original_text}\n\n"
+            "🌐 *Translation*\n"
+            f"{translated_text}\n\n"
+            f"🎙️ Voice: `{gender}`\n"
+            f"⚡ Speed: `{rate}`\n"
+            f"🎚️ Pitch: `{pitch}`",
+            parse_mode="Markdown"
+        )
+
+        with open(
+            output_audio,
+            "rb"
+        ) as audio_file:
+
+            await message.reply_audio(
+                audio=audio_file,
+                title="NUTHH AI Voice Translation",
+                performer="NUTHH Translator"
+            )
+
+    except Exception as e:
 
         print(
-            "VIDEO ERROR:",
-            repr(error)
+            f"[Voice Error] {repr(e)}"
         )
 
         await status.edit_text(
-            "❌ VIDEO PROCESSING FAILED\n\n"
-            f"{error}\n\n"
-            "💾 Checkpoint was kept.\n"
-            "You can resume this job "
-            "after restarting the bot."
+            "❌ Voice translation failed.\n\n"
+            "Please try again."
         )
+
+    finally:
+
+        # Wait a little before cleanup
+        await asyncio.sleep(2)
+
+        safe_remove(
+            work_dir
+        )
+
+
+# =========================================================
+# UNKNOWN / DOCUMENT
+# =========================================================
+
+async def document_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    await update.message.reply_text(
+        "📄 Document received.\n"
+        "Document translation module can be connected here."
+    )
