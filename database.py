@@ -1,176 +1,279 @@
 import sqlite3
-
 from datetime import datetime
 
 from config import DATABASE_PATH
 
 
 def get_connection():
-
-    connection = sqlite3.connect(
+    conn = sqlite3.connect(
         DATABASE_PATH,
         check_same_thread=False
     )
 
-    connection.row_factory = sqlite3.Row
+    conn.row_factory = sqlite3.Row
 
-    return connection
+    return conn
 
 
 def init_database():
 
-    connection = get_connection()
+    conn = get_connection()
 
-    cursor = connection.cursor()
+    cursor = conn.cursor()
 
-    cursor.execute(
-        """
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
             username TEXT,
             first_name TEXT,
             language_mode TEXT DEFAULT 'auto',
+            voice_gender TEXT DEFAULT 'female',
+            voice_name TEXT DEFAULT '',
+            voice_rate TEXT DEFAULT '+0%',
+            voice_pitch TEXT DEFAULT '+0Hz',
+            voice_volume TEXT DEFAULT '+0%',
             created_at TEXT,
             last_active TEXT
         )
-        """
-    )
+    """)
 
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS video_jobs (
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS voice_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
-            file_name TEXT,
+            source_text TEXT,
+            translated_text TEXT,
             source_language TEXT,
             target_language TEXT,
-            status TEXT,
-            created_at TEXT,
-            completed_at TEXT
+            voice_name TEXT,
+            gender TEXT,
+            audio_path TEXT,
+            created_at TEXT
         )
-        """
-    )
+    """)
 
-    connection.commit()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS translations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            source_text TEXT,
+            translated_text TEXT,
+            source_language TEXT,
+            target_language TEXT,
+            created_at TEXT
+        )
+    """)
 
-    connection.close()
+    conn.commit()
+
+    conn.close()
 
 
-def add_user(user):
+def add_or_update_user(user):
 
-    connection = get_connection()
+    conn = get_connection()
 
-    now = datetime.utcnow().isoformat()
+    cursor = conn.cursor()
 
-    connection.execute(
-        """
+    now = datetime.now().isoformat()
+
+    cursor.execute("""
         INSERT INTO users (
             user_id,
             username,
             first_name,
-            language_mode,
             created_at,
             last_active
         )
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?)
 
         ON CONFLICT(user_id)
         DO UPDATE SET
             username = excluded.username,
             first_name = excluded.first_name,
             last_active = excluded.last_active
-        """,
-        (
-            user.id,
-            user.username,
-            user.first_name,
-            "auto",
-            now,
-            now
-        )
+    """, (
+        user.id,
+        user.username,
+        user.first_name,
+        now,
+        now
+    ))
+
+    conn.commit()
+
+    conn.close()
+
+
+def get_user(user_id):
+
+    conn = get_connection()
+
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT *
+        FROM users
+        WHERE user_id = ?
+    """, (user_id,))
+
+    row = cursor.fetchone()
+
+    conn.close()
+
+    return row
+
+
+def update_voice_settings(
+    user_id,
+    gender=None,
+    voice_name=None,
+    rate=None,
+    pitch=None,
+    volume=None
+):
+
+    conn = get_connection()
+
+    cursor = conn.cursor()
+
+    current = get_user(user_id)
+
+    if not current:
+        conn.close()
+        return
+
+    gender = (
+        gender
+        if gender is not None
+        else current["voice_gender"]
     )
 
-    connection.commit()
+    voice_name = (
+        voice_name
+        if voice_name is not None
+        else current["voice_name"]
+    )
 
-    connection.close()
+    rate = (
+        rate
+        if rate is not None
+        else current["voice_rate"]
+    )
+
+    pitch = (
+        pitch
+        if pitch is not None
+        else current["voice_pitch"]
+    )
+
+    volume = (
+        volume
+        if volume is not None
+        else current["voice_volume"]
+    )
+
+    cursor.execute("""
+        UPDATE users
+        SET
+            voice_gender = ?,
+            voice_name = ?,
+            voice_rate = ?,
+            voice_pitch = ?,
+            voice_volume = ?,
+            last_active = ?
+        WHERE user_id = ?
+    """, (
+        gender,
+        voice_name,
+        rate,
+        pitch,
+        volume,
+        datetime.now().isoformat(),
+        user_id
+    ))
+
+    conn.commit()
+
+    conn.close()
 
 
-def create_video_job(
+def save_voice_history(
     user_id,
-    file_name,
+    source_text,
+    translated_text,
+    source_language,
+    target_language,
+    voice_name,
+    gender,
+    audio_path
+):
+
+    conn = get_connection()
+
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        INSERT INTO voice_history (
+            user_id,
+            source_text,
+            translated_text,
+            source_language,
+            target_language,
+            voice_name,
+            gender,
+            audio_path,
+            created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        user_id,
+        source_text,
+        translated_text,
+        source_language,
+        target_language,
+        voice_name,
+        gender,
+        audio_path,
+        datetime.now().isoformat()
+    ))
+
+    conn.commit()
+
+    conn.close()
+
+
+def save_translation(
+    user_id,
+    source_text,
+    translated_text,
     source_language,
     target_language
 ):
 
-    connection = get_connection()
+    conn = get_connection()
 
-    now = datetime.utcnow().isoformat()
+    cursor = conn.cursor()
 
-    cursor = connection.execute(
-        """
-        INSERT INTO video_jobs (
+    cursor.execute("""
+        INSERT INTO translations (
             user_id,
-            file_name,
+            source_text,
+            translated_text,
             source_language,
             target_language,
-            status,
             created_at
         )
         VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (
-            user_id,
-            file_name,
-            source_language,
-            target_language,
-            "processing",
-            now
-        )
-    )
+    """, (
+        user_id,
+        source_text,
+        translated_text,
+        source_language,
+        target_language,
+        datetime.now().isoformat()
+    ))
 
-    job_id = cursor.lastrowid
+    conn.commit()
 
-    connection.commit()
-
-    connection.close()
-
-    return job_id
-
-
-def update_video_job(
-    job_id,
-    status
-):
-
-    connection = get_connection()
-
-    completed_at = None
-
-    if status in (
-        "completed",
-        "failed"
-    ):
-
-        completed_at = (
-            datetime.utcnow()
-            .isoformat()
-        )
-
-    connection.execute(
-        """
-        UPDATE video_jobs
-        SET
-            status = ?,
-            completed_at = ?
-        WHERE id = ?
-        """,
-        (
-            status,
-            completed_at,
-            job_id
-        )
-    )
-
-    connection.commit()
-
-    connection.close()
+    conn.close()
