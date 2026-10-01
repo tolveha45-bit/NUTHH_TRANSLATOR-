@@ -1,7 +1,4 @@
-from telegram import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup
-)
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 def main_menu():
@@ -10,31 +7,29 @@ def main_menu():
 
         [
             InlineKeyboardButton(
-                "🌐 Text Translate",
+                "🌐 Text Translation",
                 callback_data="text_translate"
             )
         ],
 
         [
             InlineKeyboardButton(
-                "🎤 Voice",
-                callback_data="voice_translate"
+                "🎤 Voice AI",
+                callback_data="voice_ai"
             ),
 
             InlineKeyboardButton(
-                "🖼️ OCR",
-                callback_data="ocr_translate"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🎬 Video Translate",
+                "🎬 Video Translation",
                 callback_data="video_translate"
             )
         ],
 
         [
+            InlineKeyboardButton(
+                "🖼️ Image / OCR",
+                callback_data="ocr"
+            ),
+
             InlineKeyboardButton(
                 "📩 Forward Translate",
                 callback_data="forward_translate"
@@ -43,8 +38,8 @@ def main_menu():
 
         [
             InlineKeyboardButton(
-                "🔄 Language Mode",
-                callback_data="language_mode"
+                "🔊 Voice Studio",
+                callback_data="voice_studio"
             )
         ],
 
@@ -62,19 +57,10 @@ def main_menu():
 
         [
             InlineKeyboardButton(
-                "🔐 My License",
-                callback_data="license"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
                 "⚙️ Settings",
                 callback_data="settings"
-            )
-        ],
+            ),
 
-        [
             InlineKeyboardButton(
                 "❓ Help",
                 callback_data="help"
@@ -82,70 +68,204 @@ def main_menu():
         ]
     ]
 
-    return InlineKeyboardMarkup(
-        keyboard
-    )
+    return InlineKeyboardMarkup(keyboard)
 
 
-def video_menu():
+def voice_menu():
 
     keyboard = [
 
         [
             InlineKeyboardButton(
-                "🇨🇳 → 🇰🇭",
-                callback_data="video_zh_km"
+                "👨 Male",
+                callback_data="voice_gender_male"
             ),
 
             InlineKeyboardButton(
-                "🇰🇭 → 🇨🇳",
-                callback_data="video_km_zh"
+                "👩 Female",
+                callback_data="voice_gender_female"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🧑 Neutral",
+                callback_data="voice_gender_neutral"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🇨🇳 Chinese → Khmer",
+                callback_data="voice_zh_km"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🇰🇭 Khmer → Chinese",
+                callback_data="voice_km_zh"
             )
         ],
 
         [
             InlineKeyboardButton(
                 "🤖 Auto Detect",
-                callback_data="video_auto"
+                callback_data="voice_auto"
             )
         ],
 
         [
             InlineKeyboardButton(
-                "📝 Subtitle Only",
-                callback_data="video_subtitle"
+                "⚡ Speed",
+                callback_data="voice_speed"
+            ),
+
+            InlineKeyboardButton(
+                "🎚️ Pitch",
+                callback_data="voice_pitch"
             )
         ],
 
         [
             InlineKeyboardButton(
-                "🎞️ Burn Subtitle",
-                callback_data="video_burn"
+                "🎧 Voice History",
+                callback_data="voice_history"
             )
         ],
 
         [
             InlineKeyboardButton(
                 "⬅️ Back",
-                callback_data="main_menu"
+                callback_data="back_main"
             )
         ]
     ]
 
-    return InlineKeyboardMarkup(
-        keyboard
-    )
+    return InlineKeyboardMarkup(keyboard)
+
+
+def gender_menu():
+
+    keyboard = [
+
+        [
+            InlineKeyboardButton(
+                "👨 Male",
+                callback_data="voice_gender_male"
+            ),
+
+            InlineKeyboardButton(
+                "👩 Female",
+                callback_data="voice_gender_female"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🧑 Neutral",
+                callback_data="voice_gender_neutral"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "⬅️ Back",
+                callback_data="voice_ai"
+            )
+        ]
+    ]
+
+    return InlineKeyboardMarkup(keyboard)
+
+
+def speed_menu():
+
+    keyboard = [
+
+        [
+            InlineKeyboardButton(
+                "🐢 0.75x",
+                callback_data="speed_75"
+            ),
+
+            InlineKeyboardButton(
+                "▶️ 1.0x",
+                callback_data="speed_100"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "⚡ 1.25x",
+                callback_data="speed_125"
+            ),
+
+            InlineKeyboardButton(
+                "🚀 1.50x",
+                callback_data="speed_150"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🔥 2.0x",
+                callback_data="speed_200"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "⬅️ Back",
+                callback_data="voice_ai"
+            )
+        ]
+    ]
+
+    return InlineKeyboardMarkup(keyboard)
+
+
+def pitch_menu():
+
+    keyboard = [
+
+        [
+            InlineKeyboardButton(
+                "🔉 Low",
+                callback_data="pitch_low"
+            ),
+
+            InlineKeyboardButton(
+                "🔊 Normal",
+                callback_data="pitch_normal"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🔊 High",
+                callback_data="pitch_high"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "⬅️ Back",
+                callback_data="voice_ai"
+            )
+        ]
+    ]
+
+    return InlineKeyboardMarkup(keyboard)
 
 
 def back_menu():
 
-    return InlineKeyboardMarkup(
+    return InlineKeyboardMarkup([
         [
-            [
-                InlineKeyboardButton(
-                    "⬅️ Back",
-                    callback_data="main_menu"
-                )
-            ]
+            InlineKeyboardButton(
+                "⬅️ Back",
+                callback_data="back_main"
+            )
         ]
-    )
+    ])
