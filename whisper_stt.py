@@ -1,6 +1,4 @@
-from faster_whisper import (
-    WhisperModel
-)
+from faster_whisper import WhisperModel
 
 from config import (
     WHISPER_MODEL,
@@ -19,8 +17,7 @@ def get_model():
     if _model is None:
 
         print(
-            "Loading Whisper model:",
-            WHISPER_MODEL
+            f"[Whisper] Loading model: {WHISPER_MODEL}"
         )
 
         _model = WhisperModel(
@@ -39,19 +36,9 @@ def transcribe_audio(
 
     model = get_model()
 
-    whisper_language = None
-
-    if language == "zh":
-
-        whisper_language = "zh"
-
-    elif language == "km":
-
-        whisper_language = "km"
-
     segments, info = model.transcribe(
-        audio_path,
-        language=whisper_language,
+        str(audio_path),
+        language=language,
         beam_size=5,
         vad_filter=True,
         condition_on_previous_text=True
@@ -61,27 +48,15 @@ def transcribe_audio(
 
     for segment in segments:
 
-        text = (
-            segment.text or ""
-        ).strip()
+        text = segment.text.strip()
 
         if not text:
-
             continue
 
-        result.append(
-            {
-                "start": float(
-                    segment.start
-                ),
-                "end": float(
-                    segment.end
-                ),
-                "text": text
-            }
-        )
+        result.append({
+            "start": float(segment.start),
+            "end": float(segment.end),
+            "text": text
+        })
 
-    return (
-        info.language,
-        result
-    )
+    return info.language, result
