@@ -1,28 +1,33 @@
 import os
 from pathlib import Path
-
 from dotenv import load_dotenv
-
-
-load_dotenv()
 
 
 BASE_DIR = Path(__file__).resolve().parent
 
+load_dotenv(BASE_DIR / ".env")
 
-BOT_TOKEN = os.getenv(
-    "BOT_TOKEN",
-    ""
-)
+
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+
+if not BOT_TOKEN:
+    raise RuntimeError(
+        "BOT_TOKEN is missing. Please put your Telegram Bot Token in .env"
+    )
 
 
 DATABASE_PATH = os.getenv(
     "DATABASE_PATH",
-    str(BASE_DIR / "data" / "nuthh.db")
+    "data/nuthh.db"
 )
 
+DATABASE_PATH = BASE_DIR / DATABASE_PATH
 
 TEMP_DIR = BASE_DIR / "temp"
+DATA_DIR = BASE_DIR / "data"
+
+TEMP_DIR.mkdir(parents=True, exist_ok=True)
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 WHISPER_MODEL = os.getenv(
@@ -30,12 +35,10 @@ WHISPER_MODEL = os.getenv(
     "small"
 )
 
-
 WHISPER_DEVICE = os.getenv(
     "WHISPER_DEVICE",
     "cpu"
 )
-
 
 WHISPER_COMPUTE_TYPE = os.getenv(
     "WHISPER_COMPUTE_TYPE",
@@ -43,47 +46,25 @@ WHISPER_COMPUTE_TYPE = os.getenv(
 )
 
 
-MAX_VIDEO_SIZE_MB = int(
+DEFAULT_RATE = os.getenv(
+    "DEFAULT_RATE",
+    "+0%"
+)
+
+DEFAULT_PITCH = os.getenv(
+    "DEFAULT_PITCH",
+    "+0Hz"
+)
+
+DEFAULT_VOLUME = os.getenv(
+    "DEFAULT_VOLUME",
+    "+0%"
+)
+
+
+MAX_TEXT_LENGTH = int(
     os.getenv(
-        "MAX_VIDEO_SIZE_MB",
-        "200"
+        "MAX_TEXT_LENGTH",
+        "5000"
     )
 )
-
-
-VIDEO_CHUNK_MINUTES = int(
-    os.getenv(
-        "VIDEO_CHUNK_MINUTES",
-        "10"
-    )
-)
-
-
-VIDEO_MAX_RETRIES = int(
-    os.getenv(
-        "VIDEO_MAX_RETRIES",
-        "3"
-    )
-)
-
-
-TEMP_DIR.mkdir(
-    parents=True,
-    exist_ok=True
-)
-
-
-Path(
-    DATABASE_PATH
-).parent.mkdir(
-    parents=True,
-    exist_ok=True
-)
-
-
-if not BOT_TOKEN:
-
-    raise RuntimeError(
-        "BOT_TOKEN is missing. "
-        "Please add it to .env"
-    )
