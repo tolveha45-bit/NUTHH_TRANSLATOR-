@@ -8,45 +8,36 @@ from telegram.ext import (
 
 from config import BOT_TOKEN
 
-from database import (
-    init_database
-)
+from database import init_database
 
 from handlers import (
     start_handler,
     callback_handler,
     text_handler,
-    video_handler
+    voice_handler
 )
 
 
 def main():
 
-    print(
-        "================================"
-    )
+    print("=" * 60)
+    print("NUTHH TRANSLATOR")
+    print("Chinese ↔ Khmer")
+    print("Voice AI Enabled")
+    print("=" * 60)
 
-    print(
-        " NUTHH TRANSLATOR BOT"
-    )
-
-    print(
-        " Long Video Edition"
-    )
-
-    print(
-        "================================"
-    )
-
+    # Database
     init_database()
 
+    # Telegram
     application = (
-        Application.builder()
+        Application
+        .builder()
         .token(BOT_TOKEN)
         .build()
     )
 
-    # /start
+    # Commands
     application.add_handler(
         CommandHandler(
             "start",
@@ -61,19 +52,19 @@ def main():
         )
     )
 
-    # Video
+    # Voice
     application.add_handler(
         MessageHandler(
-            filters.VIDEO,
-            video_handler
+            filters.VOICE,
+            voice_handler
         )
     )
 
     # Text
     application.add_handler(
         MessageHandler(
-            filters.TEXT
-            & ~filters.COMMAND,
+            filters.TEXT &
+            ~filters.COMMAND,
             text_handler
         )
     )
