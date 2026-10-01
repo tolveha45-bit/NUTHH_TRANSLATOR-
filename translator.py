@@ -7,16 +7,12 @@ def translate_text(
     target: str
 ) -> str:
 
-    text = (
-        text or ""
-    ).strip()
+    text = text.strip()
 
     if not text:
-
         return ""
 
     if source == target:
-
         return text
 
     translator = GoogleTranslator(
@@ -24,14 +20,10 @@ def translate_text(
         target=target
     )
 
-    return translator.translate(
-        text
-    )
+    return translator.translate(text)
 
 
-def translate_chinese_to_khmer(
-    text
-):
+def chinese_to_khmer(text):
 
     return translate_text(
         text,
@@ -40,12 +32,41 @@ def translate_chinese_to_khmer(
     )
 
 
-def translate_khmer_to_chinese(
-    text
-):
+def khmer_to_chinese(text):
 
     return translate_text(
         text,
         "km",
         "zh-CN"
+    )
+
+
+def detect_and_translate(text):
+
+    from langdetect import detect
+
+    language = detect(text)
+
+    if language.startswith("zh"):
+
+        translated = chinese_to_khmer(text)
+
+        return (
+            translated,
+            "zh",
+            "km"
+        )
+
+    if language == "km":
+
+        translated = khmer_to_chinese(text)
+
+        return (
+            translated,
+            "km",
+            "zh"
+        )
+
+    raise ValueError(
+        f"Unsupported language: {language}"
     )
